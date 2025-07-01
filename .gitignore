@@ -1,1 +1,16 @@
 /.github
+# Build output
+/bin/
+/obj/
+
+# User/IDE files
+*.user
+*.suo
+*.userprefs
+.vs/
+.vscode/
+
+# OS files
+Thumbs.db
+Desktop.ini
+.DS_Store

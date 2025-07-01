@@ -78,18 +78,28 @@ public class ChunkManager {
             needed.Add((cx, cy, cz));
         }
 
-        // Queue missing chunks for background generation
+        // Prioritize missing chunks by distance to camera
+        var missing = new List<(int, int, int)>();
         foreach (var key in needed)
         {
             if (!_chunks.ContainsKey(key))
+                missing.Add(key);
+        }
+        // Sort by distance to camera chunk
+        missing.Sort((a, b) =>
+        {
+            float da = (a.Item1 - camChunkX) * (a.Item1 - camChunkX) + (a.Item2 - camChunkY) * (a.Item2 - camChunkY) + (a.Item3 - camChunkZ) * (a.Item3 - camChunkZ);
+            float db = (b.Item1 - camChunkX) * (b.Item1 - camChunkX) + (b.Item2 - camChunkY) * (b.Item2 - camChunkY) + (b.Item3 - camChunkZ) * (b.Item3 - camChunkZ);
+            return da.CompareTo(db);
+        });
+        foreach (var key in missing)
+        {
+            lock (_genLock)
             {
-                lock (_genLock)
+                if (!_genQueue.Contains(key))
                 {
-                    if (!_genQueue.Contains(key))
-                    {
-                        _genQueue.Enqueue(key);
-                        System.Diagnostics.Debug.WriteLine($"QUEUE chunk {key} for worldgen");
-                    }
+                    _genQueue.Enqueue(key);
+                    System.Diagnostics.Debug.WriteLine($"QUEUE chunk {key} for worldgen");
                 }
             }
         }
