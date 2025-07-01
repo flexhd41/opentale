@@ -39,26 +39,7 @@ namespace VoxelEngine
                     var max = chunkWorldPos + new Vector3(Chunk.SizeX, Chunk.SizeY, Chunk.SizeZ);
                     if (!FrustumCulling.IsBoxInFrustum(view, proj, min, max))
                         continue;
-                    // Occlusion culling: only render if at least one neighbor is missing
-                    var neighbors = new (int, int, int)[] {
-                        (key.Item1+1, key.Item2, key.Item3),
-                        (key.Item1-1, key.Item2, key.Item3),
-                        (key.Item1, key.Item2+1, key.Item3),
-                        (key.Item1, key.Item2-1, key.Item3),
-                        (key.Item1, key.Item2, key.Item3+1),
-                        (key.Item1, key.Item2, key.Item3-1)
-                    };
-                    bool exposed = false;
-                    foreach (var n in neighbors)
-                    {
-                        if (_chunkManager.GetRenderer(n) == null)
-                        {
-                            exposed = true;
-                            break;
-                        }
-                    }
-                    if (!exposed)
-                        continue;
+                    // No chunk-based occlusion culling; rely on block-level face culling in ChunkRenderer
                     Matrix4 chunkModel = Matrix4.CreateTranslation(chunkWorldPos);
                     GL.UniformMatrix4(GL.GetUniformLocation(_shaderProgram, "model"), false, ref chunkModel);
                     renderer.Render();

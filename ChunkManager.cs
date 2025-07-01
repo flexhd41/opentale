@@ -7,6 +7,29 @@ using OpenTK.Mathematics;
 namespace VoxelEngine
 {
 public class ChunkManager {
+    // Returns true if all chunks in a 5-chunk radius around the given position are loaded
+    public bool AreMajorChunksLoaded(Vector3 cameraPos, int radius = 5)
+    {
+        int camChunkX = (int)Math.Floor(cameraPos.X / (float)Chunk.SizeX);
+        int camChunkY = (int)Math.Floor(cameraPos.Y / (float)Chunk.SizeY);
+        int camChunkZ = (int)Math.Floor(cameraPos.Z / (float)Chunk.SizeZ);
+        for (int dx = -radius; dx <= radius; dx++)
+        for (int dy = -VerticalRenderDistance; dy <= VerticalRenderDistance; dy++)
+        for (int dz = -radius; dz <= radius; dz++)
+        {
+            int cx = camChunkX + dx;
+            int cy = camChunkY + dy;
+            int cz = camChunkZ + dz;
+            int dist2 = dx * dx + dy * dy + dz * dz;
+            if (dist2 <= radius * radius)
+            {
+                var key = (cx, cy, cz);
+                if (!_chunks.ContainsKey(key) || !_renderers.ContainsKey(key))
+                    return false;
+            }
+        }
+        return true;
+    }
     // Limit concurrent mesh generation tasks
     private static readonly int MaxMeshTasks = System.Environment.ProcessorCount;
     private static readonly System.Threading.SemaphoreSlim MeshSemaphore = new(MaxMeshTasks);
@@ -236,6 +259,8 @@ public class ChunkManager {
 
     public (Chunk?, (int, int, int)) RaycastChunk(Vector3 origin, Vector3 dir, float maxDist = 100f)
     {
+        (Chunk?, (int, int, int)) closest = (null, (0, 0, 0));
+        float closestT = float.MaxValue;
         for (float t = 0; t < maxDist; t += 0.1f)
         {
             Vector3 p = origin + dir * t;
@@ -245,16 +270,31 @@ public class ChunkManager {
             int lx = (int)(p.X - cx * Chunk.SizeX);
             int ly = (int)(p.Y - cy * Chunk.SizeY);
             int lz = (int)(p.Z - cz * Chunk.SizeZ);
-            if (_chunks.TryGetValue((cx, cy, cz), out var chunk))
+            var key = (cx, cy, cz);
+            if (!_chunks.ContainsKey(key))
             {
-                if (lx >= 0 && ly >= 0 && lz >= 0 && lx < Chunk.SizeX && ly < Chunk.SizeY && lz < Chunk.SizeZ)
+                // Optionally trigger chunk generation if missing
+                lock (_genLock)
                 {
-                    if (chunk[lx, ly, lz] != BlockType.Air)
-                        return (chunk, (lx, ly, lz));
+                    if (!_genQueue.Contains(key))
+                        _genQueue.Enqueue(key);
+                }
+                continue;
+            }
+            var chunk = _chunks[key];
+            if (lx >= 0 && ly >= 0 && lz >= 0 && lx < Chunk.SizeX && ly < Chunk.SizeY && lz < Chunk.SizeZ)
+            {
+                if (chunk[lx, ly, lz] != BlockType.Air)
+                {
+                    if (t < closestT)
+                    {
+                        closest = (chunk, (lx, ly, lz));
+                        closestT = t;
+                    }
                 }
             }
         }
-        return (null, (0, 0, 0));
+        return closest;
     }
 
     public (Chunk?, (int, int, int), (int, int, int)) RaycastPlace(Vector3 origin, Vector3 dir, float maxDist = 100f)

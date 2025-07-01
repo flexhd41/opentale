@@ -173,7 +173,20 @@ void main() {
         {
             base.OnRenderFrame(args);
             GL.Clear(ClearBufferMask.ColorBufferBit | ClearBufferMask.DepthBufferBit);
-            if (_worldRenderer != null && _camera != null)
+            bool loading = false;
+            if (_chunkManager != null && _camera != null)
+            {
+                loading = !_chunkManager.AreMajorChunksLoaded(_camera.Position, 5);
+            }
+            if (loading)
+            {
+                // Simple loading overlay: clear to black and draw text
+                GL.ClearColor(0f, 0f, 0f, 1f);
+                GL.Clear(ClearBufferMask.ColorBufferBit | ClearBufferMask.DepthBufferBit);
+                // Optionally: draw a loading message using OpenTK's TextRenderer or similar (not implemented here)
+                // For now, just swap buffers for a black screen
+            }
+            else if (_worldRenderer != null && _camera != null)
             {
                 Matrix4 model = Matrix4.Identity;
                 Matrix4 view = _camera.GetViewMatrix();
