@@ -28,3 +28,4 @@ Z:\opentale\obj\Debug\net9.0-windows\refint\VoxelEngine.dll
 Z:\opentale\obj\Debug\net9.0-windows\VoxelEngine.pdb
 Z:\opentale\obj\Debug\net9.0-windows\VoxelEngine.genruntimeconfig.cache
 Z:\opentale\obj\Debug\net9.0-windows\ref\VoxelEngine.dll
+z:\opentale\obj\Debug\net9.0-windows\VoxelEngine.sourcelink.json

@@ -7,6 +7,9 @@ using OpenTK.Mathematics;
 namespace VoxelEngine
 {
 public class ChunkManager {
+    // Limit concurrent mesh generation tasks
+    private static readonly int MaxMeshTasks = System.Environment.ProcessorCount;
+    private static readonly System.Threading.SemaphoreSlim MeshSemaphore = new(MaxMeshTasks);
     private readonly BlockManager _blockManager;
     // Thread-safe queues for main-thread OpenGL work
     private readonly ConcurrentQueue<((int, int, int), Chunk, ChunkRenderer.MeshData)> _uploadQueue = new();
@@ -67,7 +70,12 @@ public class ChunkManager {
         int camChunkX = (int)Math.Floor(cameraPos.X / (float)Chunk.SizeX);
         int camChunkY = (int)Math.Floor(cameraPos.Y / (float)Chunk.SizeY);
         int camChunkZ = (int)Math.Floor(cameraPos.Z / (float)Chunk.SizeZ);
-        var needed = new HashSet<(int, int, int)>();
+        // Improved queuing: always fill a 5-chunk radius around the player first
+        var missingNear = new List<(int, int, int)>();
+        var missingFar = new List<(int, int, int)>();
+        int r2 = RenderDistance * RenderDistance;
+        int nearR = 5;
+        int nearR2 = nearR * nearR;
         for (int dx = -RenderDistance; dx <= RenderDistance; dx++)
         for (int dy = -VerticalRenderDistance; dy <= VerticalRenderDistance; dy++)
         for (int dz = -RenderDistance; dz <= RenderDistance; dz++)
@@ -75,24 +83,34 @@ public class ChunkManager {
             int cx = camChunkX + dx;
             int cy = camChunkY + dy;
             int cz = camChunkZ + dz;
-            needed.Add((cx, cy, cz));
+            int dist2 = dx * dx + dy * dy + dz * dz;
+            if (dist2 <= r2)
+            {
+                var key = (cx, cy, cz);
+                if (!_chunks.ContainsKey(key))
+                {
+                    if (dist2 <= nearR2)
+                        missingNear.Add(key);
+                    else
+                        missingFar.Add(key);
+                }
+            }
         }
-
-        // Prioritize missing chunks by distance to camera
-        var missing = new List<(int, int, int)>();
-        foreach (var key in needed)
-        {
-            if (!_chunks.ContainsKey(key))
-                missing.Add(key);
-        }
-        // Sort by distance to camera chunk
-        missing.Sort((a, b) =>
+        // Sort both lists by distance
+        missingNear.Sort((a, b) =>
         {
             float da = (a.Item1 - camChunkX) * (a.Item1 - camChunkX) + (a.Item2 - camChunkY) * (a.Item2 - camChunkY) + (a.Item3 - camChunkZ) * (a.Item3 - camChunkZ);
             float db = (b.Item1 - camChunkX) * (b.Item1 - camChunkX) + (b.Item2 - camChunkY) * (b.Item2 - camChunkY) + (b.Item3 - camChunkZ) * (b.Item3 - camChunkZ);
             return da.CompareTo(db);
         });
-        foreach (var key in missing)
+        missingFar.Sort((a, b) =>
+        {
+            float da = (a.Item1 - camChunkX) * (a.Item1 - camChunkX) + (a.Item2 - camChunkY) * (a.Item2 - camChunkY) + (a.Item3 - camChunkZ) * (a.Item3 - camChunkZ);
+            float db = (b.Item1 - camChunkX) * (b.Item1 - camChunkX) + (b.Item2 - camChunkY) * (b.Item2 - camChunkY) + (b.Item3 - camChunkZ) * (b.Item3 - camChunkZ);
+            return da.CompareTo(db);
+        });
+        // Queue near chunks first, then far
+        foreach (var key in missingNear.Concat(missingFar))
         {
             lock (_genLock)
             {
@@ -105,9 +123,21 @@ public class ChunkManager {
         }
 
         // Unload chunks no longer needed (enqueue for main-thread disposal)
+        var keep = new HashSet<(int, int, int)>();
+        for (int dx = -RenderDistance; dx <= RenderDistance; dx++)
+        for (int dy = -VerticalRenderDistance; dy <= VerticalRenderDistance; dy++)
+        for (int dz = -RenderDistance; dz <= RenderDistance; dz++)
+        {
+            int cx = camChunkX + dx;
+            int cy = camChunkY + dy;
+            int cz = camChunkZ + dz;
+            int dist2 = dx * dx + dy * dy + dz * dz;
+            if (dist2 <= r2)
+                keep.Add((cx, cy, cz));
+        }
         foreach (var key in _chunks.Keys.ToList())
         {
-            if (!needed.Contains(key))
+            if (!keep.Contains(key))
             {
                 _disposalQueue.Enqueue(key);
             }
@@ -155,7 +185,7 @@ public class ChunkManager {
             disposals++;
         }
 
-        System.Diagnostics.Debug.WriteLine($"[DEBUG] _chunks.Count={_chunks.Count}, needed.Count={needed.Count}");
+        System.Diagnostics.Debug.WriteLine($"[DEBUG] _chunks.Count={_chunks.Count}, keep.Count={keep.Count}");
     }
 
     public void RenderAll()
@@ -182,6 +212,7 @@ public class ChunkManager {
                 // Fill the block buffer for this chunk
                 Chunk.GenerateTerrain(cx, cy, cz, _blockManager);
                 var chunk = new Chunk(cx, cy, cz, _blockManager);
+                // Single-threaded mesh generation
                 var mesh = ChunkRenderer.GenerateMeshData(chunk, (cx, cy, cz));
                 lock (_genLock)
                 {

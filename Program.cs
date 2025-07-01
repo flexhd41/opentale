@@ -22,6 +22,7 @@ namespace VoxelEngine
 
     // Modern OpenTK 4.x cube rendering with shaders and VBOs
     public class VoxelWindow : GameWindow
+
     {
         private int _shaderProgram;
         private Matrix4 _proj;
@@ -29,6 +30,11 @@ namespace VoxelEngine
         private WorldRenderer? _worldRenderer;
         private FreeCamera? _camera;
         private bool _breakHeld = false;
+        private double _frameTimeSum = 0;
+        private int _frameCount = 0;
+        private double _lastFpsUpdate = 0;
+        private double _fps = 0;
+        private double _totalTime = 0;
         private bool _placeHeld = false;
         public VoxelWindow(GameWindowSettings gws, NativeWindowSettings nws) : base(gws, nws) { }
         protected override void OnLoad()
@@ -172,6 +178,21 @@ void main() {
                 Matrix4 model = Matrix4.Identity;
                 Matrix4 view = _camera.GetViewMatrix();
                 _worldRenderer.Render(model, view, _proj);
+            }
+
+            // FPS counter and debug info
+            _frameTimeSum += args.Time;
+            _frameCount++;
+            _totalTime += args.Time;
+            if (_totalTime - _lastFpsUpdate > 0.5)
+            {
+                _fps = _frameCount / _frameTimeSum;
+                _frameTimeSum = 0;
+                _frameCount = 0;
+                _lastFpsUpdate = _totalTime;
+                int chunkCount = _chunkManager != null ? _chunkManager.GetAllRenderers().Count() : 0;
+                var cam = _camera != null ? _camera.Position : Vector3.Zero;
+                Title = $"Voxel Engine (FPS: {_fps:F1}) | Chunks: {chunkCount} | Cam: ({cam.X:F1},{cam.Y:F1},{cam.Z:F1})";
             }
             SwapBuffers();
         }

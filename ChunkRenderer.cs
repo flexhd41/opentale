@@ -23,6 +23,51 @@ public class ChunkRenderer
         // Per-chunk color tint for grass
         var rand = new System.Random(chunkKey.GetHashCode());
         float tint = 0.85f + 0.3f * (float)rand.NextDouble(); // [0.85,1.15]
+        // Greedy meshing for top (Y+) face
+        bool[,,] visited = new bool[Chunk.SizeX, Chunk.SizeY, Chunk.SizeZ];
+        // Top face (Y+)
+        for (int y = 0; y < Chunk.SizeY; y++)
+        {
+            for (int z = 0; z < Chunk.SizeZ; z++)
+            {
+                for (int x = 0; x < Chunk.SizeX; x++)
+                {
+                    if (visited[x, y, z]) continue;
+                    BlockType type = chunk[x, y, z];
+                    if (type == BlockType.Air) continue;
+                    // Only add top face if above is not solid
+                    if (!chunk.IsBlockSolid(x, y + 1, z))
+                    {
+                        // Find width
+                        int width = 1;
+                        while (x + width < Chunk.SizeX && !visited[x + width, y, z] && chunk[x + width, y, z] == type && !chunk.IsBlockSolid(x + width, y + 1, z))
+                            width++;
+                        // Find height
+                        int height = 1;
+                        bool done = false;
+                        while (z + height < Chunk.SizeZ && !done)
+                        {
+                            for (int k = 0; k < width; k++)
+                            {
+                                if (visited[x + k, y, z + height] || chunk[x + k, y, z + height] != type || chunk.IsBlockSolid(x + k, y + 1, z + height))
+                                {
+                                    done = true;
+                                    break;
+                                }
+                            }
+                            if (!done) height++;
+                        }
+                        // Add merged face
+                        AddQuad(vertices, indices, ref index, x, y, z, width, height, 3, type, tint);
+                        // Mark visited
+                        for (int dz = 0; dz < height; dz++)
+                            for (int dx = 0; dx < width; dx++)
+                                visited[x + dx, y, z + dz] = true;
+                    }
+                }
+            }
+        }
+        // Fallback: add other faces (not merged)
         for (int x = 0; x < Chunk.SizeX; x++)
         for (int y = 0; y < Chunk.SizeY; y++)
         for (int z = 0; z < Chunk.SizeZ; z++)
@@ -31,12 +76,12 @@ public class ChunkRenderer
             if (type == BlockType.Air) continue;
             for (int face = 0; face < 6; face++)
             {
+                if (face == 3) continue; // skip top face, already merged
                 var (nx, ny, nz) = face switch
                 {
                     0 => (0, 0, -1),
                     1 => (0, 0, 1),
                     2 => (0, -1, 0),
-                    3 => (0, 1, 0),
                     4 => (-1, 0, 0),
                     5 => (1, 0, 0),
                     _ => (0, 0, 0)
@@ -48,6 +93,41 @@ public class ChunkRenderer
             }
         }
         return new MeshData { Vertices = vertices.ToArray(), Indices = indices.ToArray() };
+    }
+
+    // Add a merged quad for greedy meshing (top face only)
+    private static void AddQuad(List<float> vertices, List<uint> indices, ref uint index, int x, int y, int z, int width, int height, int face, BlockType type, float grassTint)
+    {
+        // Only for top face (face==3)
+        // Vertices: (x, y+1, z), (x+width, y+1, z), (x+width, y+1, z+height), (x, y+1, z+height)
+        Vector3[] quadVerts = new[]
+        {
+            new Vector3(x, y+1, z),
+            new Vector3(x+width, y+1, z),
+            new Vector3(x+width, y+1, z+height),
+            new Vector3(x, y+1, z+height)
+        };
+        Vector3 color = type switch
+        {
+            BlockType.Grass => new Vector3(0.1f * grassTint, 0.9f * grassTint, 0.1f * grassTint),
+            BlockType.Dirt => new Vector3(0.55f, 0.27f, 0.07f),
+            BlockType.Stone => new Vector3(0.6f, 0.6f, 0.7f),
+            BlockType.Water => new Vector3(0.1f, 0.4f, 1.0f),
+            BlockType.Sand => new Vector3(1.0f, 0.95f, 0.6f),
+            _ => new Vector3(0.9f, 0.9f, 0.9f)
+        };
+        foreach (var v in quadVerts)
+        {
+            vertices.Add(v.X - Chunk.SizeX/2);
+            vertices.Add(v.Y - Chunk.SizeY/2);
+            vertices.Add(v.Z - Chunk.SizeZ/2);
+            vertices.Add(color.X);
+            vertices.Add(color.Y);
+            vertices.Add(color.Z);
+        }
+        indices.Add(index); indices.Add(index+1); indices.Add(index+2);
+        indices.Add(index); indices.Add(index+2); indices.Add(index+3);
+        index += 4;
     }
 
     // Construct renderer from mesh data (main thread only)
