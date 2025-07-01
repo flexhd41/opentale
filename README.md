@@ -6,11 +6,6 @@
 2. Run `dotnet build` to build the project.
 3. Run `dotnet run` to launch the voxel engine window.
 
-## Features
-- Renders a 3D grid of cubes (voxels)
-- Uses OpenTK for OpenGL rendering
-- No gameplay, just rendering
-
 ## Next Steps
 - Optimize rendering
 - Add more voxel types/colors
