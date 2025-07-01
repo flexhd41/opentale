@@ -7,6 +7,66 @@ using OpenTK.Mathematics;
 namespace VoxelEngine
 {
 public class ChunkManager {
+    // Track modified blocks: (chunkX, chunkY, chunkZ, lx, ly, lz) -> BlockType
+    private readonly Dictionary<(int, int, int, int, int, int), BlockType> _modifiedBlocks = new();
+
+    // Call this when a block is changed
+    public void SetBlockAndTrack(int cx, int cy, int cz, int lx, int ly, int lz, BlockType type)
+    {
+        var key = (cx, cy, cz, lx, ly, lz);
+        if (type == BlockType.Air)
+            _modifiedBlocks.Remove(key);
+        else
+            _modifiedBlocks[key] = type;
+    }
+
+    // Save modified blocks to a file (JSON)
+    public void SaveWorld(string path)
+    {
+        var list = _modifiedBlocks.Select(kv => new BlockEdit {
+            ChunkX = kv.Key.Item1, ChunkY = kv.Key.Item2, ChunkZ = kv.Key.Item3,
+            LX = kv.Key.Item4, LY = kv.Key.Item5, LZ = kv.Key.Item6,
+            Type = kv.Value
+        }).ToList();
+        var json = System.Text.Json.JsonSerializer.Serialize(list);
+        System.IO.File.WriteAllText(path, json);
+    }
+
+    // Load modified blocks from a file (JSON)
+    public void LoadWorld(string path)
+    {
+        if (!System.IO.File.Exists(path)) return;
+        var json = System.IO.File.ReadAllText(path);
+        var list = System.Text.Json.JsonSerializer.Deserialize<List<BlockEdit>>(json);
+        _modifiedBlocks.Clear();
+        if (list != null)
+        {
+            foreach (var edit in list)
+                _modifiedBlocks[(edit.ChunkX, edit.ChunkY, edit.ChunkZ, edit.LX, edit.LY, edit.LZ)] = edit.Type;
+        }
+    }
+
+    // Apply all saved modifications to the world (call after terrain gen)
+    public void ApplyModifications()
+    {
+        foreach (var kv in _modifiedBlocks)
+        {
+            var (cx, cy, cz, lx, ly, lz) = kv.Key;
+            if (_chunks.TryGetValue((cx, cy, cz), out var chunk))
+                chunk[lx, ly, lz] = kv.Value;
+        }
+    }
+
+    private class BlockEdit
+    {
+        public int ChunkX { get; set; }
+        public int ChunkY { get; set; }
+        public int ChunkZ { get; set; }
+        public int LX { get; set; }
+        public int LY { get; set; }
+        public int LZ { get; set; }
+        public BlockType Type { get; set; }
+    }
     // Returns true if all chunks in a 5-chunk radius around the given position are loaded
     public bool AreMajorChunksLoaded(Vector3 cameraPos, int radius = 5)
     {
@@ -147,15 +207,16 @@ public class ChunkManager {
 
         // Unload chunks no longer needed (enqueue for main-thread disposal)
         var keep = new HashSet<(int, int, int)>();
-        for (int dx = -RenderDistance; dx <= RenderDistance; dx++)
-        for (int dy = -VerticalRenderDistance; dy <= VerticalRenderDistance; dy++)
-        for (int dz = -RenderDistance; dz <= RenderDistance; dz++)
+        // Add a +1 buffer to prevent edge chunks from being unloaded too early
+        for (int dx = -RenderDistance - 1; dx <= RenderDistance + 1; dx++)
+        for (int dy = -VerticalRenderDistance - 1; dy <= VerticalRenderDistance + 1; dy++)
+        for (int dz = -RenderDistance - 1; dz <= RenderDistance + 1; dz++)
         {
             int cx = camChunkX + dx;
             int cy = camChunkY + dy;
             int cz = camChunkZ + dz;
             int dist2 = dx * dx + dy * dy + dz * dz;
-            if (dist2 <= r2)
+            if (dist2 <= (RenderDistance + 1) * (RenderDistance + 1))
                 keep.Add((cx, cy, cz));
         }
         foreach (var key in _chunks.Keys.ToList())
@@ -232,14 +293,23 @@ public class ChunkManager {
             if (key.HasValue)
             {
                 var (cx, cy, cz) = key.Value;
-                // Fill the block buffer for this chunk
-                Chunk.GenerateTerrain(cx, cy, cz, _blockManager);
-                var chunk = new Chunk(cx, cy, cz, _blockManager);
-                // Single-threaded mesh generation
-                var mesh = ChunkRenderer.GenerateMeshData(chunk, (cx, cy, cz));
-                lock (_genLock)
+                Chunk? chunk = null;
+                bool isNew = false;
+                if (!_chunks.TryGetValue((cx, cy, cz), out chunk))
                 {
-                    _readyQueue.Enqueue((cx, cy, cz, chunk, mesh));
+                    Chunk.GenerateTerrain(cx, cy, cz, _blockManager);
+                    chunk = new Chunk(cx, cy, cz, _blockManager);
+                    isNew = true;
+                }
+                if (chunk != null)
+                {
+                    // Always apply modifications after terrain gen or chunk load
+                    if (isNew) ApplyModifications();
+                    var mesh = ChunkRenderer.GenerateMeshData(chunk, (cx, cy, cz));
+                    lock (_genLock)
+                    {
+                        _readyQueue.Enqueue((cx, cy, cz, chunk, mesh));
+                    }
                 }
             }
             else

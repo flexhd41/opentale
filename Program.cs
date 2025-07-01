@@ -134,17 +134,54 @@ void main() {
             var (chunk, (lx, ly, lz), chunkKey) = _chunkManager.RaycastPlace(_camera.Position, _camera.Front);
             if (chunk != null && chunk[lx, ly, lz] == BlockType.Air)
             {
+                // Set only the targeted block and track the edit
                 chunk[lx, ly, lz] = BlockType.Grass;
-                // Rebuild renderer for this chunk only
-            if (_chunkManager is { })
-            {
+                int cx = chunkKey.Item1, cy = chunkKey.Item2, cz = chunkKey.Item3;
+                _chunkManager.SetBlockAndTrack(cx, cy, cz, lx, ly, lz, BlockType.Grass);
+                // Rebuild renderer for this chunk
                 if (_chunkManager.GetRenderer(chunkKey) is ChunkRenderer renderer)
                 {
                     renderer.Dispose();
                     var mesh = ChunkRenderer.GenerateMeshData(chunk, chunkKey);
                     _chunkManager.SetRenderer(chunkKey, new ChunkRenderer(mesh));
                 }
-            }
+                // If on chunk boundary, update neighbor chunk mesh as well
+                if (lx == 0 && _chunkManager.GetRenderer((cx-1, cy, cz)) is ChunkRenderer n1)
+                {
+                    n1.Dispose();
+                    var mesh = ChunkRenderer.GenerateMeshData(chunk, (cx-1, cy, cz));
+                    _chunkManager.SetRenderer((cx-1, cy, cz), new ChunkRenderer(mesh));
+                }
+                if (lx == Chunk.SizeX-1 && _chunkManager.GetRenderer((cx+1, cy, cz)) is ChunkRenderer n2)
+                {
+                    n2.Dispose();
+                    var mesh = ChunkRenderer.GenerateMeshData(chunk, (cx+1, cy, cz));
+                    _chunkManager.SetRenderer((cx+1, cy, cz), new ChunkRenderer(mesh));
+                }
+                if (lz == 0 && _chunkManager.GetRenderer((cx, cy, cz-1)) is ChunkRenderer n3)
+                {
+                    n3.Dispose();
+                    var mesh = ChunkRenderer.GenerateMeshData(chunk, (cx, cy, cz-1));
+                    _chunkManager.SetRenderer((cx, cy, cz-1), new ChunkRenderer(mesh));
+                }
+                if (lz == Chunk.SizeZ-1 && _chunkManager.GetRenderer((cx, cy, cz+1)) is ChunkRenderer n4)
+                {
+                    n4.Dispose();
+                    var mesh = ChunkRenderer.GenerateMeshData(chunk, (cx, cy, cz+1));
+                    _chunkManager.SetRenderer((cx, cy, cz+1), new ChunkRenderer(mesh));
+                }
+                if (ly == 0 && _chunkManager.GetRenderer((cx, cy-1, cz)) is ChunkRenderer n5)
+                {
+                    n5.Dispose();
+                    var mesh = ChunkRenderer.GenerateMeshData(chunk, (cx, cy-1, cz));
+                    _chunkManager.SetRenderer((cx, cy-1, cz), new ChunkRenderer(mesh));
+                }
+                if (ly == Chunk.SizeY-1 && _chunkManager.GetRenderer((cx, cy+1, cz)) is ChunkRenderer n6)
+                {
+                    n6.Dispose();
+                    var mesh = ChunkRenderer.GenerateMeshData(chunk, (cx, cy+1, cz));
+                    _chunkManager.SetRenderer((cx, cy+1, cz), new ChunkRenderer(mesh));
+                }
             }
         }
 
@@ -154,18 +191,57 @@ void main() {
             var (chunk, (lx, ly, lz)) = _chunkManager.RaycastChunk(_camera.Position, _camera.Front);
             if (chunk != null && chunk[lx, ly, lz] != BlockType.Air)
             {
+                // Set only the targeted block and track the edit
                 chunk[lx, ly, lz] = BlockType.Air;
-                // Rebuild renderer for this chunk only
                 var chunkKey = _chunkManager.GetChunkKey(chunk);
-            if (chunkKey is { } key)
-            {
-                if (_chunkManager.GetRenderer(key) is ChunkRenderer renderer)
+                if (chunkKey is { } key)
                 {
-                    renderer.Dispose();
-                    var mesh = ChunkRenderer.GenerateMeshData(chunk, key);
-                    _chunkManager.SetRenderer(key, new ChunkRenderer(mesh));
+                    int cx = key.Item1, cy = key.Item2, cz = key.Item3;
+                    _chunkManager.SetBlockAndTrack(cx, cy, cz, lx, ly, lz, BlockType.Air);
+                    if (_chunkManager.GetRenderer(key) is ChunkRenderer renderer)
+                    {
+                        renderer.Dispose();
+                        var mesh = ChunkRenderer.GenerateMeshData(chunk, key);
+                        _chunkManager.SetRenderer(key, new ChunkRenderer(mesh));
+                    }
+                    // If on chunk boundary, update neighbor chunk mesh as well
+                    if (lx == 0 && _chunkManager.GetRenderer((cx-1, cy, cz)) is ChunkRenderer n1)
+                    {
+                        n1.Dispose();
+                        var mesh = ChunkRenderer.GenerateMeshData(chunk, (cx-1, cy, cz));
+                        _chunkManager.SetRenderer((cx-1, cy, cz), new ChunkRenderer(mesh));
+                    }
+                    if (lx == Chunk.SizeX-1 && _chunkManager.GetRenderer((cx+1, cy, cz)) is ChunkRenderer n2)
+                    {
+                        n2.Dispose();
+                        var mesh = ChunkRenderer.GenerateMeshData(chunk, (cx+1, cy, cz));
+                        _chunkManager.SetRenderer((cx+1, cy, cz), new ChunkRenderer(mesh));
+                    }
+                    if (lz == 0 && _chunkManager.GetRenderer((cx, cy, cz-1)) is ChunkRenderer n3)
+                    {
+                        n3.Dispose();
+                        var mesh = ChunkRenderer.GenerateMeshData(chunk, (cx, cy, cz-1));
+                        _chunkManager.SetRenderer((cx, cy, cz-1), new ChunkRenderer(mesh));
+                    }
+                    if (lz == Chunk.SizeZ-1 && _chunkManager.GetRenderer((cx, cy, cz+1)) is ChunkRenderer n4)
+                    {
+                        n4.Dispose();
+                        var mesh = ChunkRenderer.GenerateMeshData(chunk, (cx, cy, cz+1));
+                        _chunkManager.SetRenderer((cx, cy, cz+1), new ChunkRenderer(mesh));
+                    }
+                    if (ly == 0 && _chunkManager.GetRenderer((cx, cy-1, cz)) is ChunkRenderer n5)
+                    {
+                        n5.Dispose();
+                        var mesh = ChunkRenderer.GenerateMeshData(chunk, (cx, cy-1, cz));
+                        _chunkManager.SetRenderer((cx, cy-1, cz), new ChunkRenderer(mesh));
+                    }
+                    if (ly == Chunk.SizeY-1 && _chunkManager.GetRenderer((cx, cy+1, cz)) is ChunkRenderer n6)
+                    {
+                        n6.Dispose();
+                        var mesh = ChunkRenderer.GenerateMeshData(chunk, (cx, cy+1, cz));
+                        _chunkManager.SetRenderer((cx, cy+1, cz), new ChunkRenderer(mesh));
+                    }
                 }
-            }
             }
         }
 
